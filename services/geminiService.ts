@@ -7,31 +7,40 @@ const API_KEY = import.meta.env.VITE_OPENAI_API_KEY || '';
 const BASE_URL = import.meta.env.VITE_BASE_URL || 'https://openrouter.ai/api/v1/chat/completions';
 
 // 封装 OpenRouter 请求逻辑
-async function requestOpenRouter(model: string, systemInstruction: string, userContent: string, responseSchema: any) {
+async function requestOpenRouter(model: string, systemInstruction: string, userContent: string) {
+  // 确保 Key 后面没有多余的空格
+  const cleanKey = API_KEY.trim();
+
   const response = await fetch(BASE_URL, {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${API_KEY}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": window.location.origin,
-      "X-Title": "AI Script Generator"
+      // 1. 只保留最基础的两个 Header，避免触发复杂的跨域预检
+      "Authorization": `Bearer ${cleanKey}`,
+      "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      model: model, // 这里依然使用你代码里的 "gemini-3-pro-preview"
+      model: "google/gemini-pro-1.5", // 显式写死模型名，确保万无一失
       messages: [
-        { role: "system", content: systemInstruction },
+        { role: "system", content: systemInstruction + "\n请务必只输出合法的 JSON 格式内容。" },
         { role: "user", content: userContent }
       ],
-      response_format: { 
-        type: "json_schema", 
-        json_schema: {
-          name: "output_schema",
-          strict: true,
-          schema: responseSchema 
-        }
-      }
+      response_format: { type: "json_object" }
     })
   });
+
+  // 如果还是报 CORS 错误，我们可以通过检查 response 是否存在来辅助排查
+  if (!response) {
+    throw new Error("网络请求被浏览器拦截，请检查是否开启了广告过滤器或 VPN。");
+  }
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData?.error?.message || `请求失败: ${response.status}`);
+  }
+
+  const data = await response.json();
+  return { text: data.choices[0].message.content };
+}
 
   if (!response.ok) {
     const errorData = await response.json();
