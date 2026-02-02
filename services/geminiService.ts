@@ -136,7 +136,8 @@ export const geminiService = {
     previousContext: string = "",
     mode: Mode,
     scriptStyle: ScriptStyle,
-    layoutRef: string = ""
+    layoutRef: string = "",
+    adaptationHistory: string = "" // 新增：用于传递之前批次中对人物和剧情的改动记录
   ): Promise<any> => {
     return callWithRetry(async () => {
       const isFirstBatch = startEpisode === 1;
@@ -150,7 +151,14 @@ export const geminiService = {
         : `【硬核衔接指令】：
           1. 必须深度解析[前序剧集结尾]的最后一段剧情 and 悬念。
           2. 本批次的第一集（第${startEpisode}集）必须从上一集结束的精确时间点、物理位置直接开始。
-          3. 严禁出现“过了一段时间”或转场感，必须是动作和台词的无缝延续。`;
+          3. 严禁出现“过了一段时间”或转场感，必须是动作 and 台词的无缝延续。`;
+
+      // 新增：针对你提到的改编内容对不上的补丁指令
+      const adaptationConsistencyInstruction = `
+【改编一致性监控（最高优先级）】：
+1. **禁止幻觉人物**：必须参考[之前批次的改编记录]。如果某个原著人物在之前的改编中已被删减、合并或尚未登场，严禁在本批次突然出现。
+2. **逻辑闭环**：若原著人物在当前情节中很重要但之前未交代，你必须在本批次为其安排合理的“初次登场”或将其戏份合并给已存在的角色。
+3. **状态校验**：严格检查[前序剧集结尾]中在场的人物名单，确保第一场戏不会凭空多出或减少人。`;
 
       const systemInstruction = `你是一位专注爆款漫剧的首席编剧。任务：生成阶段 ${phasePlan.phaseIndex} 的剧本（第 ${startEpisode} 集至第 ${startEpisode + phasePlan.episodes - 1} 集）。
 
@@ -165,6 +173,7 @@ export const geminiService = {
 3. 【秘密见证者】：唯一知道主角真实身份或前世记忆的非人实体。
 
 改编要求：
+- ${adaptationConsistencyInstruction}
 - 确保主角与这些实体之间的“推拉”、“吐槽”、“合作”戏份在剧本中占比不低于原著比例。
 - 信息传递必须遵循“Show, don't tell”原则，通过主角与辅助实体的交互来展示，而非删除实体。
 - ${styleInstruction}
@@ -185,6 +194,7 @@ export const geminiService = {
         systemInstruction,
         `
         [大纲路线]：\n${outline}
+        [之前批次的改编记录（需严格遵守）]：\n${adaptationHistory || "暂无记录"}
         [当前阶段任务]：\n${phasePlan.description} (预期爽点: ${phasePlan.climax})
         [前序剧集结尾（必须紧接此处开始）]：\n${previousContext || "无（本批次为全剧开篇）"}
         [原著素材]：\n${novelText}`,
@@ -202,9 +212,14 @@ export const geminiService = {
                 },
                 required: ["episodeNumber", "title", "content"]
               }
+            },
+            // 新增：让AI输出本批次的改编总结，供下一批次使用
+            adaptationSummary: {
+              type: "string", 
+              description: "简要总结本批次对原著角色、剧情做的重大删改（如：删除了某人，合并了某情节），以便维持一致性。"
             }
           },
-          required: ["episodes"]
+          required: ["episodes", "adaptationSummary"]
         }
       );
       return JSON.parse(response.text);
