@@ -167,13 +167,18 @@ export const geminiService = {
 改编要求：
 - 确保主角与这些实体之间的“推拉”、“吐槽”、“合作”戏份在剧本中占比不低于原著比例。
 - 信息传递必须遵循“Show, don't tell”原则，通过主角与辅助实体的交互来展示，而非删除实体。
-- 每一集字数要求在600-800字。
 - ${styleInstruction}
 - ${continuityInstruction}
 
+【强制要求】：
+- 每一集字数要求在600-800字。
+
+  
 【排版规范】：
 严禁 Markdown。输出纯净剧本排版。
 参考对齐：[${layoutRef || "标准格式"}]`;
+
+
 
       const response = await requestOpenRouter(
         "google/gemini-3-flash-preview",
