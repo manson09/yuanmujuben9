@@ -1,0 +1,152 @@
+
+import { GoogleGenAI, Type } from "@google/genai";
+import { Mode, ProjectOutline, ScriptStyle, PhasePlan } from "../types";
+
+const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+
+async function callWithRetry(fn: () => Promise<any>, maxRetries = 4): Promise<any> {
+  let lastError: any;
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await fn();
+    } catch (error: any) {
+      lastError = error;
+      const errorMessage = error?.message?.toLowerCase() || "";
+      const status = error?.status || (errorMessage.includes('429') ? 429 : errorMessage.includes('500') ? 500 : 0);
+      const isRetryable = status === 429 || status >= 500 || errorMessage.includes('xhr') || errorMessage.includes('rpc');
+      if (isRetryable) {
+        const delay = Math.pow(2, i) * 1000 + Math.random() * 1000;
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw lastError;
+}
+
+export const geminiService = {
+  generateOutline: async (novelText: string, mode: Mode): Promise<ProjectOutline> => {
+    return callWithRetry(async () => {
+      const ai = getAI();
+      const systemInstruction = `你是一位顶级动漫爽剧编剧专家。你的任务是基于原著产出全案大纲。
+
+【核心创作规范】：
+1. **总集数规划**：全剧严格控制在 65-80 集。
+2. **阶段结构**：第一阶段固定 10 集，后续根据爽点分布划分为多个阶段（每阶段8-12集）。
+3. **受众对焦**：${mode}模式。`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3-pro-preview",
+        contents: `素材：\n${novelText}`,
+        config: {
+          systemInstruction,
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              content: { type: Type.STRING },
+              characters: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    name: { type: Type.STRING }, gender: { type: Type.STRING }, age: { type: Type.STRING },
+                    identity: { type: Type.STRING }, appearance: { type: Type.STRING }, growth: { type: Type.STRING },
+                    motivation: { type: Type.STRING }
+                  },
+                  required: ["name", "gender", "age", "identity", "appearance", "growth", "motivation"]
+                }
+              },
+              phasePlans: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    phaseIndex: { type: Type.NUMBER }, episodes: { type: Type.NUMBER },
+                    description: { type: Type.STRING }, climax: { type: Type.STRING }
+                  },
+                  required: ["phaseIndex", "episodes", "description", "climax"]
+                }
+              }
+            },
+            required: ["content", "characters", "phasePlans"]
+          }
+        }
+      });
+      return JSON.parse(response.text);
+    });
+  },
+
+  // 核心改动：支持“续写模式”的批次生成
+  generateScriptBatch: async (
+    novelText: string, 
+    outline: string,
+    phasePlan: PhasePlan,
+    startEpisode: number,
+    previousContext: string = "", // 关键：上一批的最后剧情
+    mode: Mode,
+    scriptStyle: ScriptStyle,
+    layoutRef: string = ""
+  ): Promise<any> => {
+    return callWithRetry(async () => {
+      const ai = getAI();
+      const isFirstBatch = startEpisode === 1;
+
+      const styleInstruction = scriptStyle === '情绪流' 
+        ? `【流派：情绪流】极致冲突，节奏爆破，反派嚣张化，情绪拉扯拉满。`
+        : `【流派：非情绪流】诙谐幽默，反套路脑洞，对话有机锋。`;
+
+      const continuityInstruction = isFirstBatch
+        ? `【开篇指令】：首集3句内必须进入冲突，快速建模。`
+        : `【硬核衔接指令】：
+          1. 必须深度解析[前序剧集结尾]的最后一段剧情和悬念。
+          2. 本批次的第一集（第${startEpisode}集）必须从上一集结束的精确时间点、物理位置直接开始。
+          3. 严禁出现“过了一段时间”或转场感，必须是动作和台词的无缝延续。`;
+
+      const systemInstruction = `你是一位专注爆款漫剧的首席编剧。任务：生成阶段 ${phasePlan.phaseIndex} 的剧本（第 ${startEpisode} 集至第 ${startEpisode + phasePlan.episodes - 1} 集）。
+
+【核心原则】：
+- 严禁删减器灵、系统、宠物的戏份。
+- 每一集必须以极其强烈的悬念（钩子）结尾。
+- ${styleInstruction}
+- ${continuityInstruction}
+
+【排版规范】：
+严禁 Markdown。输出纯净剧本排版。
+参考对齐：[${layoutRef || "标准格式"}]`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3-pro-preview",
+        contents: `
+        [大纲路线]：\n${outline}
+        [当前阶段任务]：\n${phasePlan.description} (预期爽点: ${phasePlan.climax})
+        [前序剧集结尾（必须紧接此处开始）]：\n${previousContext || "无（本批次为全剧开篇）"}
+        [原著素材]：\n${novelText}`,
+        config: {
+          systemInstruction,
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              episodes: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    episodeNumber: { type: Type.NUMBER },
+                    title: { type: Type.STRING },
+                    content: { type: Type.STRING }
+                  },
+                  required: ["episodeNumber", "title", "content"]
+                }
+              }
+            },
+            required: ["episodes"]
+          }
+        }
+      });
+      return JSON.parse(response.text);
+    });
+  }
+};
