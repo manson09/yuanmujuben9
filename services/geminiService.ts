@@ -1,8 +1,46 @@
-
-import { GoogleGenAI, Type } from "@google/genai";
+import { Type } from "@google/genai";
 import { Mode, ProjectOutline, ScriptStyle, PhasePlan } from "../types";
 
-const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+// 修改点：根据你 Cloudflare 的设置读取变量
+// 注意：Vite 环境下使用 import.meta.env
+const API_KEY = import.meta.env.VITE_OPENAI_API_KEY || ''; 
+const BASE_URL = import.meta.env.VITE_BASE_URL || 'https://openrouter.ai/api/v1/chat/completions';
+
+// 封装 OpenRouter 请求逻辑
+async function requestOpenRouter(model: string, systemInstruction: string, userContent: string, responseSchema: any) {
+  const response = await fetch(BASE_URL, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${API_KEY}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": window.location.origin,
+      "X-Title": "AI Script Generator"
+    },
+    body: JSON.stringify({
+      model: model, // 这里依然使用你代码里的 "gemini-3-pro-preview"
+      messages: [
+        { role: "system", content: systemInstruction },
+        { role: "user", content: userContent }
+      ],
+      response_format: { 
+        type: "json_schema", 
+        json_schema: {
+          name: "output_schema",
+          strict: true,
+          schema: responseSchema 
+        }
+      }
+    })
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw { status: response.status, message: errorData?.error?.message || "Request Failed" };
+  }
+
+  const data = await response.json();
+  return { text: data.choices[0].message.content };
+}
 
 async function callWithRetry(fn: () => Promise<any>, maxRetries = 4): Promise<any> {
   let lastError: any;
@@ -28,7 +66,6 @@ async function callWithRetry(fn: () => Promise<any>, maxRetries = 4): Promise<an
 export const geminiService = {
   generateOutline: async (novelText: string, mode: Mode): Promise<ProjectOutline> => {
     return callWithRetry(async () => {
-      const ai = getAI();
       const systemInstruction = `你是一位顶级动漫爽剧编剧专家。你的任务是基于原著产出全案大纲。
 
 【核心创作规范】：
@@ -36,61 +73,56 @@ export const geminiService = {
 2. **阶段结构**：第一阶段固定 10 集，后续根据爽点分布划分为多个阶段（每阶段8-12集）。
 3. **受众对焦**：${mode}模式。`;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3-pro-preview",
-        contents: `素材：\n${novelText}`,
-        config: {
-          systemInstruction,
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              content: { type: Type.STRING },
-              characters: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    name: { type: Type.STRING }, gender: { type: Type.STRING }, age: { type: Type.STRING },
-                    identity: { type: Type.STRING }, appearance: { type: Type.STRING }, growth: { type: Type.STRING },
-                    motivation: { type: Type.STRING }
-                  },
-                  required: ["name", "gender", "age", "identity", "appearance", "growth", "motivation"]
-                }
-              },
-              phasePlans: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    phaseIndex: { type: Type.NUMBER }, episodes: { type: Type.NUMBER },
-                    description: { type: Type.STRING }, climax: { type: Type.STRING }
-                  },
-                  required: ["phaseIndex", "episodes", "description", "climax"]
-                }
+      const response = await requestOpenRouter(
+        "gemini-3-pro-preview",
+        systemInstruction,
+        `素材：\n${novelText}`,
+        {
+          type: "object",
+          properties: {
+            content: { type: "string" },
+            characters: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  name: { type: "string" }, gender: { type: "string" }, age: { type: "string" },
+                  identity: { type: "string" }, appearance: { type: "string" }, growth: { type: "string" },
+                  motivation: { type: "string" }
+                },
+                required: ["name", "gender", "age", "identity", "appearance", "growth", "motivation"]
               }
             },
-            required: ["content", "characters", "phasePlans"]
-          }
+            phasePlans: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  phaseIndex: { type: "number" }, episodes: { type: "number" },
+                  description: { type: "string" }, climax: { type: "string" }
+                },
+                required: ["phaseIndex", "episodes", "description", "climax"]
+              }
+            }
+          },
+          required: ["content", "characters", "phasePlans"]
         }
-      });
+      );
       return JSON.parse(response.text);
     });
   },
 
-  // 核心改动：支持“续写模式”的批次生成
   generateScriptBatch: async (
     novelText: string, 
     outline: string,
     phasePlan: PhasePlan,
     startEpisode: number,
-    previousContext: string = "", // 关键：上一批的最后剧情
+    previousContext: string = "",
     mode: Mode,
     scriptStyle: ScriptStyle,
     layoutRef: string = ""
   ): Promise<any> => {
     return callWithRetry(async () => {
-      const ai = getAI();
       const isFirstBatch = startEpisode === 1;
 
       const styleInstruction = scriptStyle === '情绪流' 
@@ -116,36 +148,33 @@ export const geminiService = {
 严禁 Markdown。输出纯净剧本排版。
 参考对齐：[${layoutRef || "标准格式"}]`;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3-pro-preview",
-        contents: `
+      const response = await requestOpenRouter(
+        "gemini-3-pro-preview",
+        systemInstruction,
+        `
         [大纲路线]：\n${outline}
         [当前阶段任务]：\n${phasePlan.description} (预期爽点: ${phasePlan.climax})
         [前序剧集结尾（必须紧接此处开始）]：\n${previousContext || "无（本批次为全剧开篇）"}
         [原著素材]：\n${novelText}`,
-        config: {
-          systemInstruction,
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              episodes: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    episodeNumber: { type: Type.NUMBER },
-                    title: { type: Type.STRING },
-                    content: { type: Type.STRING }
-                  },
-                  required: ["episodeNumber", "title", "content"]
-                }
+        {
+          type: "object",
+          properties: {
+            episodes: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  episodeNumber: { type: "number" },
+                  title: { type: "string" },
+                  content: { type: "string" }
+                },
+                required: ["episodeNumber", "title", "content"]
               }
-            },
-            required: ["episodes"]
-          }
+            }
+          },
+          required: ["episodes"]
         }
-      });
+      );
       return JSON.parse(response.text);
     });
   }
