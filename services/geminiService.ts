@@ -74,7 +74,7 @@ export const geminiService = {
 3. **受众对焦**：${mode}模式。`;
 
       const response = await requestOpenRouter(
-        "gemini-3-pro-preview",
+        "google/gemini-3-pro-preview",
         systemInstruction,
         `素材：\n${novelText}`,
         {
@@ -149,7 +149,7 @@ export const geminiService = {
 参考对齐：[${layoutRef || "标准格式"}]`;
 
       const response = await requestOpenRouter(
-        "gemini-3-pro-preview",
+        "google/gemini-3-pro-preview",
         systemInstruction,
         `
         [大纲路线]：\n${outline}
