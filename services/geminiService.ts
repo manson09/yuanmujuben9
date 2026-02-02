@@ -1,4 +1,3 @@
-import { Type } from "@google/genai";
 import { Mode, ProjectOutline, ScriptStyle, PhasePlan } from "../types";
 
 // 修改点：自动补全 URL 路径，解决返回 HTML 的问题
@@ -12,9 +11,9 @@ const BASE_URL = RAW_BASE_URL.endsWith('/chat/completions')
 async function requestOpenRouter(model: string, systemInstruction: string, userContent: string, responseSchema?: any) {
   const cleanKey = API_KEY.trim();
 
-  // 构造请求体，包含 schema 逻辑以保持下方代码不被破坏
+  // 构造请求体
   const body: any = {
-    model: "google/gemini-pro-1.5", 
+    model: model, // 使用传入的参数
     messages: [
       { role: "system", content: systemInstruction },
       { role: "user", content: userContent }
@@ -47,7 +46,7 @@ async function requestOpenRouter(model: string, systemInstruction: string, userC
   if (!contentType || !contentType.includes("application/json")) {
     const errorText = await response.text();
     console.error("服务器返回了非 JSON 内容:", errorText);
-    throw { status: response.status, message: "接口路径配置错误，服务器返回了网页。已尝试自动补全为 /chat/completions，请刷新重试。" };
+    throw { status: response.status, message: "接口路径配置错误，服务器返回了网页。请检查 VITE_BASE_URL 是否正确。" };
   }
 
   if (!response.ok) {
@@ -91,7 +90,7 @@ export const geminiService = {
 3. **受众对焦**：${mode}模式。`;
 
       const response = await requestOpenRouter(
-        "google/gemini-pro-1.5",
+        "google/gemini-3-flash-preview",
         systemInstruction,
         `素材：\n${novelText}`,
         {
@@ -177,7 +176,7 @@ export const geminiService = {
 参考对齐：[${layoutRef || "标准格式"}]`;
 
       const response = await requestOpenRouter(
-        "google/gemini-pro-1.5",
+        "google/gemini-3-flash-preview",
         systemInstruction,
         `
         [大纲路线]：\n${outline}
