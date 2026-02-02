@@ -1,9 +1,12 @@
 import { Type } from "@google/genai";
 import { Mode, ProjectOutline, ScriptStyle, PhasePlan } from "../types";
 
-// 修改点：根据你 Cloudflare 的设置读取变量
+// 修改点：自动补全 URL 路径，解决返回 HTML 的问题
 const API_KEY = import.meta.env.VITE_OPENAI_API_KEY || ''; 
-const BASE_URL = import.meta.env.VITE_BASE_URL || 'https://openrouter.ai/api/v1';
+const RAW_BASE_URL = import.meta.env.VITE_BASE_URL || 'https://openrouter.ai/api/v1';
+const BASE_URL = RAW_BASE_URL.endsWith('/chat/completions') 
+  ? RAW_BASE_URL 
+  : `${RAW_BASE_URL.replace(/\/$/, '')}/chat/completions`;
 
 // 封装 OpenRouter 请求逻辑
 async function requestOpenRouter(model: string, systemInstruction: string, userContent: string, responseSchema?: any) {
@@ -38,6 +41,14 @@ async function requestOpenRouter(model: string, systemInstruction: string, userC
     },
     body: JSON.stringify(body)
   });
+
+  // 增加安全检查：如果返回的不是 JSON，打印错误
+  const contentType = response.headers.get("content-type");
+  if (!contentType || !contentType.includes("application/json")) {
+    const errorText = await response.text();
+    console.error("服务器返回了非 JSON 内容:", errorText);
+    throw { status: response.status, message: "接口路径配置错误，服务器返回了网页。已尝试自动补全为 /chat/completions，请刷新重试。" };
+  }
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
@@ -138,14 +149,25 @@ export const geminiService = {
       const continuityInstruction = isFirstBatch
         ? `【开篇指令】：首集3句内必须进入冲突，快速建模。`
         : `【硬核衔接指令】：
-          1. 必须深度解析[前序剧集结尾]的最后一段剧情和悬念。
+          1. 必须深度解析[前序剧集结尾]的最后一段剧情 and 悬念。
           2. 本批次的第一集（第${startEpisode}集）必须从上一集结束的精确时间点、物理位置直接开始。
           3. 严禁出现“过了一段时间”或转场感，必须是动作和台词的无缝延续。`;
 
       const systemInstruction = `你是一位专注爆款漫剧的首席编剧。任务：生成阶段 ${phasePlan.phaseIndex} 的剧本（第 ${startEpisode} 集至第 ${startEpisode + phasePlan.episodes - 1} 集）。
 
-【核心原则】：
-- 严禁删减器灵、系统、宠物的戏份。
+【核心角色保留原则】：
+1. 必须深度挖掘原著中的关键道具（如判官笔、特殊法宝）、核心人物关系及标志性戏份。
+2. 改编可以快节奏，但绝不能删减原著的关键设定 and 道具戏份。这些元素必须作为爽点和转折的核心频繁出现。
+
+在改编任何原著小说时，严禁删减以下三类“非人类/非传统”角色的戏份，并将它们视为剧本的【关键功能人】：
+
+1. 【解说与百科类实体】：如器灵（判官笔）、系统、魔法书。它们是世界观和逻辑链的唯一出口，严禁将其台词转化为旁白，必须以对话形式保留。
+2. 【吐槽与氛围类实体】：如萌宠、损友型挂件。它们负责调节情绪流节奏，防止剧本陷入单一阴沉，必须保留其反馈戏份。
+3. 【秘密见证者】：唯一知道主角真实身份或前世记忆的非人实体。
+
+改编要求：
+- 确保主角与这些实体之间的“推拉”、“吐槽”、“合作”戏份在剧本中占比不低于原著比例。
+- 信息传递必须遵循“Show, don't tell”原则，通过主角与辅助实体的交互来展示，而非删除实体。
 - 每一集必须以极其强烈的悬念（钩子）结尾。
 - ${styleInstruction}
 - ${continuityInstruction}
