@@ -3,7 +3,7 @@ import { Mode, ProjectOutline, ScriptStyle, PhasePlan } from "../types";
 
 // 修改点：根据你 Cloudflare 的设置读取变量
 const API_KEY = import.meta.env.VITE_OPENAI_API_KEY || ''; 
-const BASE_URL = import.meta.env.VITE_BASE_URL || 'https://openrouter.ai/api/v1/chat/completions';
+const BASE_URL = import.meta.env.VITE_BASE_URL || 'https://openrouter.ai/api/v1';
 
 // 封装 OpenRouter 请求逻辑
 async function requestOpenRouter(model: string, systemInstruction: string, userContent: string, responseSchema?: any) {
