@@ -185,7 +185,9 @@ export const geminiService = {
   
 【排版规范】：
 严禁 Markdown。输出纯净剧本排版。
+严禁生成英文，所有环节必须全中文。
 参考对齐：[${layoutRef || "标准格式"}]`;
+
 
 
 
