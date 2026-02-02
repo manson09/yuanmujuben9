@@ -2,48 +2,45 @@ import { Type } from "@google/genai";
 import { Mode, ProjectOutline, ScriptStyle, PhasePlan } from "../types";
 
 // 修改点：根据你 Cloudflare 的设置读取变量
-// 注意：Vite 环境下使用 import.meta.env
 const API_KEY = import.meta.env.VITE_OPENAI_API_KEY || ''; 
 const BASE_URL = import.meta.env.VITE_BASE_URL || 'https://openrouter.ai/api/v1/chat/completions';
 
 // 封装 OpenRouter 请求逻辑
-async function requestOpenRouter(model: string, systemInstruction: string, userContent: string) {
-  // 确保 Key 后面没有多余的空格
+async function requestOpenRouter(model: string, systemInstruction: string, userContent: string, responseSchema?: any) {
   const cleanKey = API_KEY.trim();
+
+  // 构造请求体，包含 schema 逻辑以保持下方代码不被破坏
+  const body: any = {
+    model: "google/gemini-pro-1.5", 
+    messages: [
+      { role: "system", content: systemInstruction },
+      { role: "user", content: userContent }
+    ]
+  };
+
+  // 如果传入了 schema，则启用 OpenRouter 的结构化输出模式
+  if (responseSchema) {
+    body.response_format = {
+      type: "json_schema",
+      json_schema: {
+        name: "response_data",
+        strict: true,
+        schema: responseSchema
+      }
+    };
+  }
 
   const response = await fetch(BASE_URL, {
     method: "POST",
     headers: {
-      // 1. 只保留最基础的两个 Header，避免触发复杂的跨域预检
       "Authorization": `Bearer ${cleanKey}`,
       "Content-Type": "application/json"
     },
-    body: JSON.stringify({
-      model: "google/gemini-pro-1.5", // 显式写死模型名，确保万无一失
-      messages: [
-        { role: "system", content: systemInstruction + "\n请务必只输出合法的 JSON 格式内容。" },
-        { role: "user", content: userContent }
-      ],
-      response_format: { type: "json_object" }
-    })
+    body: JSON.stringify(body)
   });
-
-  // 如果还是报 CORS 错误，我们可以通过检查 response 是否存在来辅助排查
-  if (!response) {
-    throw new Error("网络请求被浏览器拦截，请检查是否开启了广告过滤器或 VPN。");
-  }
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData?.error?.message || `请求失败: ${response.status}`);
-  }
-
-  const data = await response.json();
-  return { text: data.choices[0].message.content };
-}
-
-  if (!response.ok) {
-    const errorData = await response.json();
     throw { status: response.status, message: errorData?.error?.message || "Request Failed" };
   }
 
@@ -83,7 +80,7 @@ export const geminiService = {
 3. **受众对焦**：${mode}模式。`;
 
       const response = await requestOpenRouter(
-        "google/gemini-3-pro-preview",
+        "google/gemini-pro-1.5",
         systemInstruction,
         `素材：\n${novelText}`,
         {
@@ -158,7 +155,7 @@ export const geminiService = {
 参考对齐：[${layoutRef || "标准格式"}]`;
 
       const response = await requestOpenRouter(
-        "google/gemini-3-pro-preview",
+        "google/gemini-pro-1.5",
         systemInstruction,
         `
         [大纲路线]：\n${outline}
