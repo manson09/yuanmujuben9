@@ -167,7 +167,7 @@ export const geminiService = {
 改编要求：
 - 确保主角与这些实体之间的“推拉”、“吐槽”、“合作”戏份在剧本中占比不低于原著比例。
 - 信息传递必须遵循“Show, don't tell”原则，通过主角与辅助实体的交互来展示，而非删除实体。
-- 每一集必须以极其强烈的悬念（钩子）结尾。
+- 每一集字数要求在600-800字。
 - ${styleInstruction}
 - ${continuityInstruction}
 
