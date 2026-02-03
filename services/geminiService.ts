@@ -204,7 +204,7 @@ ${coreMethodology}
 
 【硬性要求】：
 - 每一集字数 600-800 字。
-- 严禁 Markdown，严禁英文，输出纯净剧本。
+- 严禁 Markdown，严禁英文，全中文输出纯净剧本。
 - 参考布局：[${layoutRef || "标准格式"}]`;
 
       const response = await requestOpenRouter(
