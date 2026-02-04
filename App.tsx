@@ -13,27 +13,17 @@ const App: React.FC = () => {
   const [newProjectName, setNewProjectName] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // ✨ 修改：初始化时同时从本地和云端加载数据
+  // 初始化时仅从本地加载数据
   useEffect(() => { 
-    // 1. 立即加载本地数据
     const localData = storage.getProjects();
     setProjects(localData); 
-
-    // 2. 异步从云端获取最新数据并同步
-    const syncCloudData = async () => {
-      const cloudData = await storage.loadFromCloud();
-      if (cloudData) {
-        setProjects(cloudData);
-      }
-    };
-    syncCloudData();
   }, []);
 
   useEffect(() => { if (showCreateModal && inputRef.current) inputRef.current.focus(); }, [showCreateModal]);
 
   const currentProject = projects.find(p => p.id === currentProjectId);
 
-  // ✨ 修改：创建作品后同步到云端
+  // 创建作品逻辑
   const handleCreateProject = () => {
     if (!newProjectName.trim()) return;
     const newProject: Project = {
@@ -48,29 +38,26 @@ const App: React.FC = () => {
     const updated = [newProject, ...projects];
     setProjects(updated);
     storage.saveProjects(updated);
-    storage.saveToCloud(updated); // 同步云端
     setCurrentProjectId(newProject.id);
     setView('KNOWLEDGE_BASE');
     setNewProjectName('');
     setShowCreateModal(false);
   };
 
-  // ✨ 修改：更新作品后同步到云端
+  // 更新作品逻辑
   const updateProject = (p: Project) => {
     const updated = projects.map(proj => proj.id === p.id ? p : proj);
     setProjects(updated);
     storage.saveProjects(updated);
-    storage.saveToCloud(updated); // 同步云端
   };
 
-  // ✨ 修改：删除作品后同步到云端
+  // 删除作品逻辑
   const deleteProject = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!confirm("确定要删除该作品吗？删除后不可恢复。")) return;
     const updated = projects.filter(p => p.id !== id);
     setProjects(updated);
     storage.saveProjects(updated);
-    storage.saveToCloud(updated); // 同步云端
   };
 
   if (view === 'MANAGEMENT') {
