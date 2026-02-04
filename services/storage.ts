@@ -26,35 +26,28 @@ export const storage = {
     storage.saveProjects(projects);
   },
 
-  // --- 新增云端同步逻辑（对接你的 Cloudflare KV） ---
+  // --- 修改后的同步逻辑：移除 fetch，改为操作本地 ---
   
-  // 将所有项目同步到云端
+  // 将所有项目保存到本地（原云端同步逻辑）
   saveToCloud: async (projects: Project[]) => {
     try {
-      await fetch('/api/save', { // 对应你 functions/api/save.js
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: STORAGE_KEY, data: projects }),
-      });
-      console.log('☁️ 项目列表已同步至云端');
+      storage.saveProjects(projects);
+      console.log('💾 数据已保存至本地');
     } catch (e) {
-      console.error('云端保存失败:', e);
+      console.error('保存失败:', e);
     }
   },
 
-  // 从云端拉取项目列表
+  // 从本地拉取项目列表（原云端拉取逻辑）
   loadFromCloud: async (): Promise<Project[] | null> => {
     try {
-      const response = await fetch(`/api/get-shots?id=${STORAGE_KEY}`); // 对应你 functions/api/get-shots.js
-      const data = await response.json();
+      const data = storage.getProjects();
       if (Array.isArray(data) && data.length > 0) {
-        // 同步到本地，保证下次读取更快
-        storage.saveProjects(data);
         return data;
       }
       return null;
     } catch (e) {
-      console.error('从云端加载失败:', e);
+      console.error('加载失败:', e);
       return null;
     }
   }
